@@ -1,4 +1,5 @@
 #![deny(missing_docs)]
+#![allow(clippy::needless_doctest_main)]
 //! Provides the ability to execute async code from a sync context,
 //! without blocking a tokio core thread or busy looping the cpu.
 //!
