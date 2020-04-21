@@ -1,0 +1,19 @@
+[package]
+name = "tokio_safe_block_on"
+version = "0.1.0"
+authors = ["neonphog <neonphog@gmail.com>"]
+edition = "2018"
+description = "Provides the ability to execute async code from a sync context, without blocking a tokio core thread or busy looping the cpu."
+keywords = ["tokio", "asynchronous"]
+categories = ["asynchronous"]
+license = "Apache-2.0"
+readme = "README.md"
+documentation = "https://docs.rs/tokio_safe_block_on"
+repository = "https://github.com/neonphog/tokio_safe_block_on"
+
+[dependencies]
+futures = "0.3"
+tokio = { version = "0.2", features = ["blocking", "rt-core", "rt-util", "rt-threaded"] }
+
+[dev-dependencies]
+tokio = { version = "0.2", features = ["macros", "time"] }
