@@ -38,17 +38,6 @@
 //! }
 //! ```
 
-use std::sync::Arc;
-
-/// internal thread park/unpark based waker
-struct ThreadWaker(std::thread::Thread);
-
-impl futures::task::ArcWake for ThreadWaker {
-    fn wake_by_ref(arc_self: &Arc<Self>) {
-        arc_self.0.unpark();
-    }
-}
-
 /// Error Type
 #[derive(Debug, PartialEq)]
 pub enum BlockOnError {
@@ -73,34 +62,17 @@ pub fn tokio_safe_block_on<F: std::future::Future>(
     timeout: std::time::Duration,
 ) -> Result<F::Output, BlockOnError> {
     // work around pin requirements with a Box
-    let mut f = Box::pin(f);
+    let f = Box::pin(f);
 
     // first, we need to make sure to move this thread to the background
     tokio::task::block_in_place(move || {
-        // create a thread waker
-        let waker = futures::task::waker(Arc::new(ThreadWaker(std::thread::current())));
-        let mut context = std::task::Context::from_waker(&waker);
-
-        // capture start time
-        let start = std::time::Instant::now();
-
-        // now, in the background poll the thread whenever we get a waker wake
-        // (thread park occasionally spuriously wakes, but that's fine too)
-        loop {
-            let p = std::pin::Pin::new(&mut f);
-
-            // poll our future
-            match std::future::Future::poll(p, &mut context) {
-                std::task::Poll::Pending => (),
-                std::task::Poll::Ready(out) => return Ok(out),
+        // poll until we get a result or a timeout
+        futures::executor::block_on(async move {
+            match futures::future::select(f, tokio::time::delay_for(timeout)).await {
+                futures::future::Either::Left((res, _)) => Ok(res),
+                futures::future::Either::Right(_) => Err(BlockOnError::Timeout),
             }
-
-            // Pending... park the thread, or return timeout error
-            match timeout.checked_sub(start.elapsed()) {
-                Some(timeout) => std::thread::park_timeout(timeout),
-                None => return Err(BlockOnError::Timeout),
-            }
-        }
+        })
     })
 }
 
