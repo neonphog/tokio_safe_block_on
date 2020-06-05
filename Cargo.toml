@@ -1,6 +1,6 @@
 [package]
 name = "tokio_safe_block_on"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["neonphog <neonphog@gmail.com>"]
 edition = "2018"
 description = "Provides the ability to execute async code from a sync context, without blocking a tokio core thread or busy looping the cpu."
