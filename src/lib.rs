@@ -1,3 +1,4 @@
+#![deny(warnings)]
 #![deny(missing_docs)]
 #![allow(clippy::needless_doctest_main)]
 //! Provides the ability to execute async code from a sync context,
@@ -57,6 +58,23 @@ impl std::error::Error for BlockOnError {}
 /// without blocking a tokio core thread or busy looping the cpu.
 /// You must ensure you are within the context of a tokio::task,
 /// This allows `tokio::task::block_in_place` to move to a blocking thread.
+/// This version will never time out - you may end up binding a
+/// tokio background thread forever.
+pub fn tokio_safe_block_forever_on<F: std::future::Future>(f: F) -> F::Output {
+    // work around pin requirements with a Box
+    let f = Box::pin(f);
+
+    // first, we need to make sure to move this thread to the background
+    tokio::task::block_in_place(move || {
+        // poll until we get a result
+        futures::executor::block_on(async move { f.await })
+    })
+}
+
+/// Provides the ability to execute async code from a sync context,
+/// without blocking a tokio core thread or busy looping the cpu.
+/// You must ensure you are within the context of a tokio::task,
+/// This allows `tokio::task::block_in_place` to move to a blocking thread.
 pub fn tokio_safe_block_on<F: std::future::Future>(
     f: F,
     timeout: std::time::Duration,
@@ -79,6 +97,18 @@ pub fn tokio_safe_block_on<F: std::future::Future>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test(threaded_scheduler)]
+    async fn it_should_execute_async_from_sync_context_forever() {
+        tokio::task::spawn(async move {
+            (|| {
+                let result = tokio_safe_block_forever_on(async move { "test0" });
+                assert_eq!("test0", result);
+            })()
+        })
+        .await
+        .unwrap();
+    }
 
     #[tokio::test(threaded_scheduler)]
     async fn it_should_execute_async_from_sync_context() {
