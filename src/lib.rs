@@ -40,15 +40,24 @@
 //! ```
 
 /// Error Type
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub enum BlockOnError {
     /// The future did not complete within the time alloted.
     Timeout,
+
+    /// The spawned tokio task returned a JoinError
+    TaskJoinError(tokio::task::JoinError),
 }
 
 impl std::fmt::Display for BlockOnError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self)
+    }
+}
+
+impl From<tokio::task::JoinError> for BlockOnError {
+    fn from(e: tokio::task::JoinError) -> Self {
+        Self::TaskJoinError(e)
     }
 }
 
@@ -60,14 +69,19 @@ impl std::error::Error for BlockOnError {}
 /// This allows `tokio::task::block_in_place` to move to a blocking thread.
 /// This version will never time out - you may end up binding a
 /// tokio background thread forever.
-pub fn tokio_safe_block_forever_on<F: std::future::Future>(f: F) -> F::Output {
-    // work around pin requirements with a Box
-    let f = Box::pin(f);
-
+pub fn tokio_safe_block_forever_on<F>(f: F) -> Result<F::Output, BlockOnError>
+where
+    F: 'static + std::future::Future + Send,
+    <F as std::future::Future>::Output: Send,
+{
     // first, we need to make sure to move this thread to the background
     tokio::task::block_in_place(move || {
         // poll until we get a result
-        futures::executor::block_on(async move { f.await })
+        futures::executor::block_on(async move {
+            // if we don't spawn, any recursive calls to block_in_place
+            // will fail
+            Ok(tokio::task::spawn(f).await?)
+        })
     })
 }
 
@@ -75,23 +89,28 @@ pub fn tokio_safe_block_forever_on<F: std::future::Future>(f: F) -> F::Output {
 /// without blocking a tokio core thread or busy looping the cpu.
 /// You must ensure you are within the context of a tokio::task,
 /// This allows `tokio::task::block_in_place` to move to a blocking thread.
-pub fn tokio_safe_block_on<F: std::future::Future>(
+pub fn tokio_safe_block_on<F>(
     f: F,
     timeout: std::time::Duration,
-) -> Result<F::Output, BlockOnError> {
+) -> Result<F::Output, BlockOnError>
+where
+    F: 'static + std::future::Future + Send,
+    <F as std::future::Future>::Output: Send,
+{
     // work around pin requirements with a Box
     let f = Box::pin(f);
 
-    // first, we need to make sure to move this thread to the background
-    tokio::task::block_in_place(move || {
-        // poll until we get a result or a timeout
-        futures::executor::block_on(async move {
-            match futures::future::select(f, tokio::time::delay_for(timeout)).await {
-                futures::future::Either::Left((res, _)) => Ok(res),
-                futures::future::Either::Right(_) => Err(BlockOnError::Timeout),
-            }
-        })
-    })
+    // apply the timeout
+    let f = async move {
+        match futures::future::select(f, tokio::time::delay_for(timeout)).await
+        {
+            futures::future::Either::Left((res, _)) => Ok(res),
+            futures::future::Either::Right(_) => Err(BlockOnError::Timeout),
+        }
+    };
+
+    // execute the future
+    tokio_safe_block_forever_on(f)?
 }
 
 #[cfg(test)]
@@ -102,8 +121,9 @@ mod tests {
     async fn it_should_execute_async_from_sync_context_forever() {
         tokio::task::spawn(async move {
             (|| {
-                let result = tokio_safe_block_forever_on(async move { "test0" });
-                assert_eq!("test0", result);
+                let result =
+                    tokio_safe_block_forever_on(async move { "test0" });
+                assert_eq!("test0", result.unwrap());
             })()
         })
         .await
@@ -131,7 +151,10 @@ mod tests {
             (|| {
                 let result = tokio_safe_block_on(
                     async move {
-                        tokio::time::delay_for(std::time::Duration::from_millis(2)).await;
+                        tokio::time::delay_for(
+                            std::time::Duration::from_millis(2),
+                        )
+                        .await;
                         "test2"
                     },
                     std::time::Duration::from_millis(10),
@@ -149,13 +172,42 @@ mod tests {
             (|| {
                 let result = tokio_safe_block_on(
                     async move {
-                        tokio::time::delay_for(std::time::Duration::from_millis(10)).await;
+                        tokio::time::delay_for(
+                            std::time::Duration::from_millis(10),
+                        )
+                        .await;
                         "test3"
                     },
                     std::time::Duration::from_millis(2),
                 );
-                assert_eq!(BlockOnError::Timeout, result.unwrap_err());
+                assert_matches::assert_matches!(
+                    result,
+                    Err(BlockOnError::Timeout)
+                );
             })()
+        })
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test(threaded_scheduler)]
+    async fn recursive_blocks_test() {
+        async fn rec_async(depth: u8) -> u8 {
+            if depth >= 10 {
+                return depth;
+            }
+            rec_sync(depth + 1)
+        }
+
+        fn rec_sync(depth: u8) -> u8 {
+            tokio_safe_block_forever_on(
+                async move { rec_async(depth + 1).await },
+            )
+            .unwrap()
+        }
+
+        tokio::task::spawn(async move {
+            assert_eq!(10, rec_async(0).await);
         })
         .await
         .unwrap();
