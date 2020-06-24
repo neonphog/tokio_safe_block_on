@@ -1,6 +1,6 @@
 [package]
 name = "tokio_safe_block_on"
-version = "0.1.2"
+version = "0.2.0"
 authors = ["neonphog <neonphog@gmail.com>"]
 edition = "2018"
 description = "Provides the ability to execute async code from a sync context, without blocking a tokio core thread or busy looping the cpu."
@@ -17,3 +17,4 @@ tokio = { version = "0.2", features = ["time", "blocking", "rt-core", "rt-util",
 
 [dev-dependencies]
 tokio = { version = "0.2", features = ["macros"] }
+assert_matches = "1"
