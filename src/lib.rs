@@ -64,10 +64,12 @@ pub fn tokio_safe_block_forever_on<F: std::future::Future>(f: F) -> F::Output {
     // work around pin requirements with a Box
     let f = Box::pin(f);
 
+    let handle = tokio::runtime::Handle::current();
     // first, we need to make sure to move this thread to the background
     tokio::task::block_in_place(move || {
         // poll until we get a result
-        futures::executor::block_on(async move { f.await })
+        // futures::executor::block_on(async move { f.await })
+        handle.block_on(async move { f.await })
     })
 }
 
@@ -82,10 +84,12 @@ pub fn tokio_safe_block_on<F: std::future::Future>(
     // work around pin requirements with a Box
     let f = Box::pin(f);
 
+    let handle = tokio::runtime::Handle::current();
     // first, we need to make sure to move this thread to the background
     tokio::task::block_in_place(move || {
         // poll until we get a result or a timeout
-        futures::executor::block_on(async move {
+        // futures::executor::block_on(async move {
+        handle.block_on(async move {
             match futures::future::select(f, tokio::time::delay_for(timeout)).await {
                 futures::future::Either::Left((res, _)) => Ok(res),
                 futures::future::Either::Right(_) => Err(BlockOnError::Timeout),
