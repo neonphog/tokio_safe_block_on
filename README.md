@@ -9,7 +9,7 @@ without blocking a tokio core thread or busy looping the cpu.
 ## Example
 
 ```rust
-#[tokio::main(threaded_scheduler)]
+#[tokio::main(flavor = "multi_thread")]
 async fn main() {
     // we need to ensure we are in the context of a tokio task
     tokio::task::spawn(async move {
