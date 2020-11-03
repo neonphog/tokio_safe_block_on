@@ -13,8 +13,8 @@ repository = "https://github.com/neonphog/tokio_safe_block_on"
 
 [dependencies]
 futures = "0.3"
-tokio = { version = "0.2", features = ["time", "blocking", "rt-core", "rt-util", "rt-threaded"] }
+tokio = { version = "0.3", features = ["time", "rt", "io-util", "rt-multi-thread"] }
 
 [dev-dependencies]
-tokio = { version = "0.2", features = ["macros"] }
+tokio = { version = "0.3", features = ["macros"] }
 assert_matches = "1"

@@ -20,7 +20,7 @@ async fn main() {
                 // async code to poll synchronously
                 async move {
                     // simulate some async work
-                    tokio::time::delay_for(
+                    tokio::time::sleep(
                         std::time::Duration::from_millis(2)
                     ).await;
 

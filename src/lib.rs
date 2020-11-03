@@ -7,7 +7,7 @@
 //! # Example
 //!
 //! ```
-//! #[tokio::main(threaded_scheduler)]
+//! #[tokio::main(flavor = "multi_thread")]
 //! async fn main() {
 //!     // we need to ensure we are in the context of a tokio task
 //!     tokio::task::spawn(async move {
@@ -18,7 +18,7 @@
 //!                 // async code to poll synchronously
 //!                 async move {
 //!                     // simulate some async work
-//!                     tokio::time::delay_for(
+//!                     tokio::time::sleep(
 //!                         std::time::Duration::from_millis(2)
 //!                     ).await;
 //!
@@ -102,8 +102,7 @@ where
 
     // apply the timeout
     let f = async move {
-        match futures::future::select(f, tokio::time::delay_for(timeout)).await
-        {
+        match futures::future::select(f, tokio::time::sleep(timeout)).await {
             futures::future::Either::Left((res, _)) => Ok(res),
             futures::future::Either::Right(_) => Err(BlockOnError::Timeout),
         }
@@ -117,7 +116,7 @@ where
 mod tests {
     use super::*;
 
-    #[tokio::test(threaded_scheduler)]
+    #[tokio::test(flavor = "multi_thread")]
     async fn it_should_execute_async_from_sync_context_forever() {
         tokio::task::spawn(async move {
             (|| {
@@ -130,7 +129,7 @@ mod tests {
         .unwrap();
     }
 
-    #[tokio::test(threaded_scheduler)]
+    #[tokio::test(flavor = "multi_thread")]
     async fn it_should_execute_async_from_sync_context() {
         tokio::task::spawn(async move {
             (|| {
@@ -145,16 +144,14 @@ mod tests {
         .unwrap();
     }
 
-    #[tokio::test(threaded_scheduler)]
+    #[tokio::test(flavor = "multi_thread")]
     async fn it_should_execute_timed_async_from_sync_context() {
         tokio::task::spawn(async move {
             (|| {
                 let result = tokio_safe_block_on(
                     async move {
-                        tokio::time::delay_for(
-                            std::time::Duration::from_millis(2),
-                        )
-                        .await;
+                        tokio::time::sleep(std::time::Duration::from_millis(2))
+                            .await;
                         "test2"
                     },
                     std::time::Duration::from_millis(10),
@@ -166,15 +163,15 @@ mod tests {
         .unwrap();
     }
 
-    #[tokio::test(threaded_scheduler)]
+    #[tokio::test(flavor = "multi_thread")]
     async fn it_should_timeout_timed_async_from_sync_context() {
         tokio::task::spawn(async move {
             (|| {
                 let result = tokio_safe_block_on(
                     async move {
-                        tokio::time::delay_for(
-                            std::time::Duration::from_millis(10),
-                        )
+                        tokio::time::sleep(std::time::Duration::from_millis(
+                            10,
+                        ))
                         .await;
                         "test3"
                     },
@@ -190,7 +187,7 @@ mod tests {
         .unwrap();
     }
 
-    #[tokio::test(threaded_scheduler)]
+    #[tokio::test(flavor = "multi_thread")]
     async fn recursive_blocks_test() {
         async fn rec_async(depth: u8) -> u8 {
             if depth >= 10 {
